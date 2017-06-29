@@ -1,0 +1,128 @@
+#version=CentOS7
+# Action
+install
+text
+#firstboot --disable
+
+# System authorization information
+auth --enableshadow --passalgo=sha512
+#repo --name="EPEL" --baseurl=http://dl.fedoraproject.org/pub/epel/7/x86_64
+
+# Accept Eula
+#eula --agreed ##for RHEL
+
+#reboot
+poweroff
+# Use network installation
+
+url --url="http://10.5.177.27/centos/7/x86_64"
+
+# Run the Setup Agent on first boot
+firstboot --enable
+ignoredisk --only-use=sda
+
+# Keyboard layouts
+keyboard 'us'
+
+# System language
+lang en_US.UTF-8
+
+# Network information
+#network  --bootproto=dhcp --device=ens160 --noipv6 --activate
+#network --device=eth0 --bootproto=query ##Forcing kickstart to ask for network configuration
+#network  --hostname=centos7ks ip=10.5.177.53 netmask=255.255.255.192 gateway=10.5.177.1 dns=10.1.1.10
+
+# Root password
+rootpw --iscrypted $1$0Tcmp4Z2$Kg77eFemukGlKRSgf9d/h1
+
+# System services
+#services --enabled=NetworkManager,sshd
+services --enabled=network,sshd
+
+# System timezone
+timezone Etc/UTC --isUtc --ntpservers=0.centos.pool.ntp.org,1.centos.pool.ntp.org,2.centos.pool.ntp.org,3.centos.pool.ntp.org
+
+#user --groups=ccsadmin --homedir=/home/admindj --name=admindj --password=$1$0Tcmp4Z2$Kg77eFemukGlKRSgf9d/h1 --iscrypted --gecos="admindj"
+
+# System bootloader configuration
+bootloader --location=mbr --boot-drive=sda --append="console=ttyS0,115200n8"
+
+# Any disks whose formatting is unrecognized are initialized.
+zerombr
+
+# Partition clearing information
+clearpart --all --drives=sda --initlabel
+
+# Disk partitioning information
+# Initialize boot partition.
+part /boot --fstype=ext4 --fsoptions="defaults,noatime,commit=60" --size=512 --asprimary
+
+part swap --size=512
+
+part pv.01 --size=1000 --grow --asprimary
+volgroup volgroup1 pv.01
+
+logvol  /    --vgname=volgroup1  --size=6144   --name=lv_root --fstype=ext4 --fsoptions="defaults,noatime,commit=60"
+logvol /var  --vgname=volgroup1  --size=2048   --name=lv_var  --fstype=ext4 --fsoptions="defaults,noatime,commit=60"
+logvol /home --vgname=volgroup1  --size=4096   --name=lv_home --fstype=ext4 --fsoptions="defaults,noatime,commit=60"
+logvol /usr  --vgname=volgroup1  --size=2048   --name=lv_usr  --fstype=ext4 --fsoptions="defaults,noatime,commit=60"
+logvol /tmp  --vgname=volgroup1  --size=1024   --name=lv_tmp  --fstype=ext4 --fsoptions="defaults,noatime,commit=60"
+
+# Selinux State
+selinux --disabled
+
+%packages
+@base
+@core
+@fonts
+gcc
+net-snmp
+net-snmp-utils
+nmap
+bind-utils      #dig, host, nslookup
+openssh-clients #ssh client, key agent, sftp, scp
+nc              #nc (netcat)
+mailx           #mailer
+libgcc
+telnet
+ntp
+vim
+vsftpd
+xorg-x11-xauth
+
+
+%end
+
+%post --log=/root/ks-post.log
+/sbin/groupadd ccsadmin --gid 111
+/sbin/useradd admindj --gid 111 --home-dir /home/admindj -c "Dennis Joson"
+/usr/bin/echo admindj | passwd admindj --stdin
+/usr/bin/chage -d 0 admindj
+
+#Backup original sudoers file 
+/usr/bin/cp /etc/sudoers /etc/sudoers.default
+
+/usr/bin/echo " "  >> /etc/sudoers
+/usr/bin/echo "#CCS Administrator" >> /etc/sudoers
+/usr/bin/echo "%ccsadmin       ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers
+
+/usr/bin/echo " " >> /etc/sudoers
+/usr/bin/echo "#Allows sndisco user to use dmidecode, lsof" >> /etc/sudoers
+/usr/bin/echo "sndisco  ALL=/usr/sbin/lsof, /usr/sbin/dmidecode" >> /etc/sudoers
+
+/bin/yum install xorg-x11-server-Xvfb --enablerepo centosplus -y
+
+#Install JRE 64bit
+/bin/wget -O /usr/local/jre-7u45-linux-x64.tar.gz http://10.5.177.27/jre/jre-7u45-linux-x64.tar.gz
+/bin/tar -xzf /usr/local/jre-7u45-linux-x64.tar.gz -C /usr/local/
+/bin/rm /usr/local/jre-7u45-linux-x64.tar.gz
+/usr/local/jre1.7.0_45/bin/java -d64 -version
+
+##Install and enable snmpd
+/bin/wget -O /etc/snmp/snmpd.conf http://10.5.177.27/snmp/snmpd.conf
+/usr/bin/systemctl enable snmpd.service
+
+/usr/bin/sed -i 's/rhgb\|quiet//g' /etc/default/grub
+/usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+
+%end
